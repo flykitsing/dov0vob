@@ -3,7 +3,7 @@ import re
 import os
 import matplotlib.pyplot as plt
 from google import genai
-import gspread
+from streamlit_sheets_connection import SheetsConnection
 import pandas as pd
 
 # 1. 網頁初始化設定
@@ -22,49 +22,40 @@ with st.sidebar:
     st.header("📝 雲端核心技巧與提醒")
     subject = st.selectbox("選擇科目", ["數學", "物理", "地球科學", "資訊科學", "其他"])
     
-    # 讀取 Secrets 中的試算表網址
-    spreadsheet_url = os.environ.get("SPREADSHEET_URL")
-    
-    if not spreadsheet_url:
-        st.warning("⚠️ 請先在 Streamlit Secrets 中設定 SPREADSHEET_URL。")
-    else:
+    try:
+        # 使用 Streamlit 官方工具建立連接
+        conn = st.connection("gsheets", type=SheetsConnection)
+        
+        # 嘗試讀取該科目的工作表
         try:
-            # 使用 gspread 透過授權連線試算表
-            # Streamlit Cloud 會自動處理 gspread 的基礎認證
-            gc = gspread.environment_variable_credentials()
-            sh = gc.open_by_url(spreadsheet_url)
+            df = conn.read(worksheet=subject, ttl=5)
+            notes_list = df["技巧紀錄"].tolist()
+        except Exception:
+            notes_list = []
             
-            # 嘗試切換到該科目的工作表，不存在就建立一個
-            try:
-                worksheet = sh.worksheet(subject)
-            except gspread.exceptions.WorksheetNotFound:
-                worksheet = sh.add_worksheet(title=subject, rows="100", cols="2")
-                worksheet.append_row(["技巧紀錄"]) # 寫入標頭
+        st.markdown(f"### 📌 {subject} 的雲端備忘錄")
+        if notes_list:
+            for note in notes_list:
+                st.info(f"• {note}")
+        else:
+            st.caption("雲端目前還沒有紀錄喔！")
             
-            # 讀取所有筆記
-            records = worksheet.get_all_records()
-            notes_list = [row["技巧紀錄"] for row in records if "技巧紀錄" in row]
-            
-            st.markdown(f"### 📌 {subject} 的雲端備忘錄")
-            if notes_list:
-                for note in notes_list:
-                    st.info(f"• {note}")
-            else:
-                st.caption("雲端目前還沒有紀錄喔！")
+        st.divider()
+        st.markdown("##### ➕ 新增技巧到 Google 試算表")
+        new_tip = st.text_area("寫下你想提醒自己的事：", key="new_tip_input", height=100, placeholder="例如：勘根定理要注意函數在區間內必須連續！")
+        
+        if st.button("儲存到雲端"):
+            if new_tip.strip():
+                new_data = pd.DataFrame({"技巧紀錄": [new_tip.strip()]})
+                updated_df = pd.concat([df, new_data], ignore_index=True) if notes_list else new_data
                 
-            st.divider()
-            st.markdown("##### ➕ 新增技巧到 Google 試算表")
-            new_tip = st.text_area("寫下你想提醒自己的事：", key="new_tip_input", height=100, placeholder="例如：勘根定理要注意函數在區間內必須連續！")
-            
-            if st.button("儲存到雲端"):
-                if new_tip.strip():
-                    worksheet.append_row([new_tip.strip()])
-                    st.success("成功同步到 Google 試算表！")
-                    st.rerun()
-                    
-        except Exception as e:
-            st.error(f"試算表連線失敗，請檢查權限設定。")
-            st.caption(f"錯誤訊息: {e}")
+                # 寫回 Google Sheets
+                conn.update(worksheet=subject, data=updated_df)
+                st.success("成功同步到 Google 試算表！")
+                st.rerun()
+    except Exception as e:
+        st.error(f"試算表連線失敗，請檢查 Secrets 設定。")
+        st.caption(f"錯誤訊息: {e}")
 
 # 4. 主畫面：AI 戰隊協同解題引擎
 def solve_with_ai_team(question):
