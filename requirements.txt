@@ -1,4 +1,4 @@
 google-genai
 matplotlib
 streamlit
-st-files-connection
+gspread
