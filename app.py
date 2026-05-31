@@ -3,7 +3,7 @@ import re
 import os
 import matplotlib.pyplot as plt
 from google import genai
-from streamlit_sheets_connection import SheetsConnection
+from streamlit_gsheets_connection import GSheetsConnection
 import pandas as pd
 
 # 1. 網頁初始化設定
@@ -23,8 +23,8 @@ with st.sidebar:
     subject = st.selectbox("選擇科目", ["數學", "物理", "地球科學", "資訊科學", "其他"])
     
     try:
-        # 使用 Streamlit 官方工具建立連接
-        conn = st.connection("gsheets", type=SheetsConnection)
+        # 使用 Streamlit 官方現行最穩定的連接器
+        conn = st.connection("gsheets", type=GSheetsConnection)
         
         # 嘗試讀取該科目的工作表
         try:
