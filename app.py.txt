@@ -1,0 +1,95 @@
+import streamlit as st
+import re
+import os
+import matplotlib.pyplot as plt
+from google import genai
+from streamlit_values_connection import SheetsConnection
+import pandas as pd
+
+# 1. 網頁初始化設定
+st.set_page_config(page_title="AI 智囊團學習工具", layout="wide")
+st.title("🧠 AI 智囊團視覺化解題 x Google 雲端筆記本")
+
+# 2. 讀取 API 金鑰
+api_key = os.environ.get("GEMINI_API_KEY")
+if not api_key:
+    st.error("🔑 偵測不到 GEMINI_API_KEY，請在後端設定 Secrets。")
+    st.stop()
+client = genai.Client(api_key=api_key)
+
+# 3. 側邊欄：Google 試算表科目筆記紀錄
+with st.sidebar:
+    st.header("📝 雲端核心技巧與提醒")
+    subject = st.selectbox("選擇科目", ["數學", "物理", "地球科學", "資訊科學", "其他"])
+    
+    try:
+        conn = st.connection("gsheets", type=SheetsConnection)
+        try:
+            df = conn.read(worksheet=subject, ttl=5)
+            notes_list = df["技巧紀錄"].tolist()
+        except Exception:
+            notes_list = []
+            
+        st.markdown(f"### 📌 {subject} 的雲端備忘錄")
+        if notes_list:
+            for note in notes_list:
+                st.info(f"• {note}")
+        else:
+            st.caption("雲端目前還沒有紀錄喔！")
+            
+        st.divider()
+        st.markdown("##### ➕ 新增技巧到 Google 試算表")
+        new_tip = st.text_area("寫下你想提醒自己的事：", key="new_tip_input", height=100, placeholder="例如：勘根定理要注意函數在區間內必須連續！")
+        
+        if st.button("儲存到雲端"):
+            if new_tip.strip():
+                new_data = pd.DataFrame({"技巧紀錄": [new_tip.strip()]})
+                updated_df = pd.concat([df, new_data], ignore_index=True) if notes_list else new_data
+                conn.update(worksheet=subject, data=updated_df)
+                st.success("成功同步到 Google 試算表！")
+                st.rerun()
+    except Exception as e:
+        st.warning("請先完成 Streamlit Cloud 的 Google Sheets 金鑰綁定。")
+
+# 4. 主畫面：AI 戰隊協同解題引擎
+def solve_with_ai_team(question):
+    # 階段 A：初稿導師
+    prompt_stage1 = f"你現在是邏輯與程式能力極強的 AI 學習導師。請詳細解答以下問題，並在最後附帶標準 Python matplotlib 繪圖程式碼（包在 ```python ... ``` 區塊中，使用 plt.savefig('output_plot.png') 存檔）。\n\n【題目】：{question}"
+    response_stage1 = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_stage1)
+    draft_answer = response_stage1.text
+    
+    # 階段 B：同儕糾錯
+    prompt_stage2 = f"請仔細閱讀以下初稿解答與繪圖程式碼，挑出任何計算錯誤、邏輯漏洞或程式 Bug。若無請回覆無。\n\n【初稿】：{draft_answer}"
+    response_stage2 = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_stage2)
+    review_feedback = response_stage2.text
+    
+    # 階段 C：終審統整
+    prompt_stage3 = f"請看過「初稿內容」與「審查意見」後，修正所有瑕疵，輸出最終的「完美版學習筆記」。必須包含清晰的觀念解析與修正後 100% 可執行的 matplotlib 繪圖程式碼（包在 ```python ... ``` 區塊中）。\n\n【初稿】：{draft_answer}\n【審查意見】：{review_feedback}"
+    response_stage3 = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_stage3)
+    return response_stage3.text
+
+user_question = st.text_area("📝 請輸入你想研究或學習的題目：", placeholder="請輸入題目...")
+
+if st.button("🚀 開始解題", type="primary"):
+    if user_question.strip() == "":
+        st.warning("請先輸入題目喔！")
+    else:
+        with st.spinner("⏳ AI 智囊團正在深度解題、交叉審查並繪製圖形中..."):
+            try:
+                final_output = solve_with_ai_team(user_question)
+                clean_text = re.sub(r'```python.*?```', '', final_output, flags=re.DOTALL)
+                
+                st.markdown("### 📚 智囊團終審解答")
+                st.markdown(clean_text.strip())
+                
+                code_block = re.search(r'```python(.*?)```', final_output, re.DOTALL)
+                if code_block:
+                    code = code_block.group(1).strip()
+                    plt.figure()
+                    exec(code, globals())
+                    if os.path.exists('output_plot.png'):
+                        st.markdown("### 📊 觀念視覺化圖形")
+                        st.image('output_plot.png', use_column_width=True)
+                        os.remove('output_plot.png')
+            except Exception as e:
+                st.error(f"系統執行時發生錯誤：{e}")
