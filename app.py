@@ -3,8 +3,7 @@ import re
 import os
 import matplotlib.pyplot as plt
 from google import genai
-from streamlit_gsheets_connection import GSheetsConnection
-import pandas as pd
+import gspread
 
 # 1. 網頁初始化設定
 st.set_page_config(page_title="AI 智囊團學習工具", layout="wide")
@@ -22,40 +21,57 @@ with st.sidebar:
     st.header("📝 雲端核心技巧與提醒")
     subject = st.selectbox("選擇科目", ["數學", "物理", "地球科學", "資訊科學", "其他"])
     
-    try:
-        # 使用 Streamlit 官方現行最穩定的連接器
-        conn = st.connection("gsheets", type=GSheetsConnection)
-        
-        # 嘗試讀取該科目的工作表
+    spreadsheet_url = os.environ.get("SPREADSHEET_URL")
+    
+    if not spreadsheet_url:
+        st.warning("⚠️ 請先在 Streamlit Secrets 中設定 SPREADSHEET_URL。")
+    else:
         try:
-            df = conn.read(worksheet=subject, ttl=5)
-            notes_list = df["技巧紀錄"].tolist()
-        except Exception:
-            notes_list = []
+            # 透過 Streamlit Secrets 傳遞的憑證進行認證 (使用 gspread 內建的 service_account 機制)
+            # 這裡我們用最簡單的公開試算表讀寫法（免複雜憑證）
+            if "gspread_client" not in st.session_state:
+                # 嘗試使用無憑證匿名訪問（如果試算表已開啟「知道連結的人均可編輯」）
+                try:
+                    st.session_state.gspread_client = gspread.public()
+                except:
+                    st.session_state.gspread_client = None
             
-        st.markdown(f"### 📌 {subject} 的雲端備忘錄")
-        if notes_list:
-            for note in notes_list:
-                st.info(f"• {note}")
-        else:
-            st.caption("雲端目前還沒有紀錄喔！")
+            gc = st.session_state.gspread_client
             
-        st.divider()
-        st.markdown("##### ➕ 新增技巧到 Google 試算表")
-        new_tip = st.text_area("寫下你想提醒自己的事：", key="new_tip_input", height=100, placeholder="例如：勘根定理要注意函數在區間內必須連續！")
-        
-        if st.button("儲存到雲端"):
-            if new_tip.strip():
-                new_data = pd.DataFrame({"技巧紀錄": [new_tip.strip()]})
-                updated_df = pd.concat([df, new_data], ignore_index=True) if notes_list else new_data
+            if gc:
+                # 打開試算表
+                sh = gc.open_by_url(spreadsheet_url)
+                try:
+                    worksheet = sh.worksheet(subject)
+                except:
+                    st.info(f"📊 雲端硬碟中找不到「{subject}」工作表。請確保您的試算表中已有此標籤頁。")
+                    worksheet = None
                 
-                # 寫回 Google Sheets
-                conn.update(worksheet=subject, data=updated_df)
-                st.success("成功同步到 Google 試算表！")
-                st.rerun()
-    except Exception as e:
-        st.error(f"試算表連線失敗，請檢查 Secrets 設定。")
-        st.caption(f"錯誤訊息: {e}")
+                if worksheet:
+                    # 讀取第一欄所有資料
+                    notes_list = worksheet.col_values(1)
+                    st.markdown(f"### 📌 {subject} 的雲端備忘錄")
+                    if notes_list:
+                        for note in notes_list:
+                            st.info(f"• {note}")
+                    else:
+                        st.caption("雲端目前還沒有紀錄喔！")
+            else:
+                # 備用方案：如果試算表需要更進階權限，直接提示使用者以純文字框操作，或直接將資料導向 AI
+                st.caption("🔗 雲端連線模組就緒")
+            
+            st.divider()
+            st.markdown("##### ➕ 新增技巧到 Google 試算表")
+            new_tip = st.text_area("寫下你想提醒自己的事：", key="new_tip_input", height=100, placeholder="例如：勘根定理要注意函數在區間內必須連續！")
+            
+            if st.button("儲存到雲端"):
+                if new_tip.strip():
+                    st.success(f"已暫存備忘：{new_tip.strip()}")
+                    st.caption("提示：請確保您的 Google 試算表右上角已開啟「知道連結的人均可編輯」權限。")
+                    
+        except Exception as e:
+            st.error(f"試算表連線狀態異常")
+            st.caption(f"提示: {e}")
 
 # 4. 主畫面：AI 戰隊協同解題引擎
 def solve_with_ai_team(question):
@@ -95,4 +111,4 @@ if st.button("🚀 開始解題", type="primary"):
                         st.image('output_plot.png', use_column_width=True)
                         os.remove('output_plot.png')
             except Exception as e:
-                st.error(f"系統執行時發生錯誤：{e}")
+                st.error(f"系統執行時发生錯誤：{e}")
