@@ -3,7 +3,7 @@ import re
 import os
 import matplotlib.pyplot as plt
 from google import genai
-from streamlit_values_connection import SheetsConnection
+import gspread
 import pandas as pd
 
 # 1. 網頁初始化設定
@@ -22,48 +22,60 @@ with st.sidebar:
     st.header("📝 雲端核心技巧與提醒")
     subject = st.selectbox("選擇科目", ["數學", "物理", "地球科學", "資訊科學", "其他"])
     
-    try:
-        conn = st.connection("gsheets", type=SheetsConnection)
+    # 讀取 Secrets 中的試算表網址
+    spreadsheet_url = os.environ.get("SPREADSHEET_URL")
+    
+    if not spreadsheet_url:
+        st.warning("⚠️ 請先在 Streamlit Secrets 中設定 SPREADSHEET_URL。")
+    else:
         try:
-            df = conn.read(worksheet=subject, ttl=5)
-            notes_list = df["技巧紀錄"].tolist()
-        except Exception:
-            notes_list = []
+            # 使用 gspread 透過授權連線試算表
+            # Streamlit Cloud 會自動處理 gspread 的基礎認證
+            gc = gspread.environment_variable_credentials()
+            sh = gc.open_by_url(spreadsheet_url)
             
-        st.markdown(f"### 📌 {subject} 的雲端備忘錄")
-        if notes_list:
-            for note in notes_list:
-                st.info(f"• {note}")
-        else:
-            st.caption("雲端目前還沒有紀錄喔！")
+            # 嘗試切換到該科目的工作表，不存在就建立一個
+            try:
+                worksheet = sh.worksheet(subject)
+            except gspread.exceptions.WorksheetNotFound:
+                worksheet = sh.add_worksheet(title=subject, rows="100", cols="2")
+                worksheet.append_row(["技巧紀錄"]) # 寫入標頭
             
-        st.divider()
-        st.markdown("##### ➕ 新增技巧到 Google 試算表")
-        new_tip = st.text_area("寫下你想提醒自己的事：", key="new_tip_input", height=100, placeholder="例如：勘根定理要注意函數在區間內必須連續！")
-        
-        if st.button("儲存到雲端"):
-            if new_tip.strip():
-                new_data = pd.DataFrame({"技巧紀錄": [new_tip.strip()]})
-                updated_df = pd.concat([df, new_data], ignore_index=True) if notes_list else new_data
-                conn.update(worksheet=subject, data=updated_df)
-                st.success("成功同步到 Google 試算表！")
-                st.rerun()
-    except Exception as e:
-        st.warning("請先完成 Streamlit Cloud 的 Google Sheets 金鑰綁定。")
+            # 讀取所有筆記
+            records = worksheet.get_all_records()
+            notes_list = [row["技巧紀錄"] for row in records if "技巧紀錄" in row]
+            
+            st.markdown(f"### 📌 {subject} 的雲端備忘錄")
+            if notes_list:
+                for note in notes_list:
+                    st.info(f"• {note}")
+            else:
+                st.caption("雲端目前還沒有紀錄喔！")
+                
+            st.divider()
+            st.markdown("##### ➕ 新增技巧到 Google 試算表")
+            new_tip = st.text_area("寫下你想提醒自己的事：", key="new_tip_input", height=100, placeholder="例如：勘根定理要注意函數在區間內必須連續！")
+            
+            if st.button("儲存到雲端"):
+                if new_tip.strip():
+                    worksheet.append_row([new_tip.strip()])
+                    st.success("成功同步到 Google 試算表！")
+                    st.rerun()
+                    
+        except Exception as e:
+            st.error(f"試算表連線失敗，請檢查權限設定。")
+            st.caption(f"錯誤訊息: {e}")
 
 # 4. 主畫面：AI 戰隊協同解題引擎
 def solve_with_ai_team(question):
-    # 階段 A：初稿導師
     prompt_stage1 = f"你現在是邏輯與程式能力極強的 AI 學習導師。請詳細解答以下問題，並在最後附帶標準 Python matplotlib 繪圖程式碼（包在 ```python ... ``` 區塊中，使用 plt.savefig('output_plot.png') 存檔）。\n\n【題目】：{question}"
     response_stage1 = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_stage1)
     draft_answer = response_stage1.text
     
-    # 階段 B：同儕糾錯
     prompt_stage2 = f"請仔細閱讀以下初稿解答與繪圖程式碼，挑出任何計算錯誤、邏輯漏洞或程式 Bug。若無請回覆無。\n\n【初稿】：{draft_answer}"
     response_stage2 = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_stage2)
     review_feedback = response_stage2.text
     
-    # 階段 C：終審統整
     prompt_stage3 = f"請看過「初稿內容」與「審查意見」後，修正所有瑕疵，輸出最終的「完美版學習筆記」。必須包含清晰的觀念解析與修正後 100% 可執行的 matplotlib 繪圖程式碼（包在 ```python ... ``` 區塊中）。\n\n【初稿】：{draft_answer}\n【審查意見】：{review_feedback}"
     response_stage3 = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_stage3)
     return response_stage3.text
