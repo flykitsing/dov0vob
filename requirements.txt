@@ -1,4 +1,4 @@
 google-genai
 matplotlib
 streamlit
-streamlit-sheets-connection
+st-files-connection
