@@ -3,112 +3,95 @@ import re
 import os
 import matplotlib.pyplot as plt
 from google import genai
-import gspread
+import requests
 
 # 1. 網頁初始化設定
-st.set_page_config(page_title="AI 智囊團學習工具", layout="wide")
-st.title("🧠 AI 智囊團視覺化解題 x Google 雲端筆記本")
+st.set_page_config(page_title="AI 聯軍智囊團", layout="wide")
+st.title("🤝 AI 三巨頭聯軍解題工具 (Gemini x DeepSeek x Groq)")
 
-# 2. 讀取 API 金鑰
-api_key = os.environ.get("GEMINI_API_KEY")
-if not api_key:
-    st.error("🔑 偵測不到 GEMINI_API_KEY，請在後端設定 Secrets。")
+# 2. 檢查並讀取三家 API 金鑰
+gemini_key = os.environ.get("GEMINI_API_KEY")
+deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
+groq_key = os.environ.get("GROQ_API_KEY")
+
+if not all([gemini_key, deepseek_key, groq_key]):
+    st.error("🔑 偵測到 Secrets 設定不完整！請確保 GEMINI_API_KEY、DEEPSEEK_API_KEY 與 GROQ_API_KEY 皆已填入。")
     st.stop()
-client = genai.Client(api_key=api_key)
 
-# 3. 側邊欄：Google 試算表科目筆記紀錄
-with st.sidebar:
-    st.header("📝 雲端核心技巧與提醒")
-    subject = st.selectbox("選擇科目", ["數學", "物理", "地球科學", "資訊科學", "其他"])
-    
-    spreadsheet_url = os.environ.get("SPREADSHEET_URL")
-    
-    if not spreadsheet_url:
-        st.warning("⚠️ 請先在 Streamlit Secrets 中設定 SPREADSHEET_URL。")
-    else:
-        try:
-            # 透過 Streamlit Secrets 傳遞的憑證進行認證 (使用 gspread 內建的 service_account 機制)
-            # 這裡我們用最簡單的公開試算表讀寫法（免複雜憑證）
-            if "gspread_client" not in st.session_state:
-                # 嘗試使用無憑證匿名訪問（如果試算表已開啟「知道連結的人均可編輯」）
-                try:
-                    st.session_state.gspread_client = gspread.public()
-                except:
-                    st.session_state.gspread_client = None
-            
-            gc = st.session_state.gspread_client
-            
-            if gc:
-                # 打開試算表
-                sh = gc.open_by_url(spreadsheet_url)
-                try:
-                    worksheet = sh.worksheet(subject)
-                except:
-                    st.info(f"📊 雲端硬碟中找不到「{subject}」工作表。請確保您的試算表中已有此標籤頁。")
-                    worksheet = None
-                
-                if worksheet:
-                    # 讀取第一欄所有資料
-                    notes_list = worksheet.col_values(1)
-                    st.markdown(f"### 📌 {subject} 的雲端備忘錄")
-                    if notes_list:
-                        for note in notes_list:
-                            st.info(f"• {note}")
-                    else:
-                        st.caption("雲端目前還沒有紀錄喔！")
-            else:
-                # 備用方案：如果試算表需要更進階權限，直接提示使用者以純文字框操作，或直接將資料導向 AI
-                st.caption("🔗 雲端連線模組就緒")
-            
-            st.divider()
-            st.markdown("##### ➕ 新增技巧到 Google 試算表")
-            new_tip = st.text_area("寫下你想提醒自己的事：", key="new_tip_input", height=100, placeholder="例如：勘根定理要注意函數在區間內必須連續！")
-            
-            if st.button("儲存到雲端"):
-                if new_tip.strip():
-                    st.success(f"已暫存備忘：{new_tip.strip()}")
-                    st.caption("提示：請確保您的 Google 試算表右上角已開啟「知道連結的人均可編輯」權限。")
-                    
-        except Exception as e:
-            st.error(f"試算表連線狀態異常")
-            st.caption(f"提示: {e}")
+# 初始化 Gemini 客户端
+gemini_client = genai.Client(api_key=gemini_key)
 
-# 4. 主畫面：AI 戰隊協同解題引擎
-def solve_with_ai_team(question):
+# 3. 定義外部 API (DeepSeek & Groq) 的呼叫函式 (使用標準 requests)
+def call_deepseek(prompt):
+    headers = {
+        "Authorization": f"Bearer {deepseek_key}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "model": "deepseek-chat", # 或是 deepseek-reasoner (R1) 視你帳號额度而定
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.2
+    }
+    response = requests.post("https://api.deepseek.com/v1/chat/completions", json=data, headers=headers, timeout=30)
+    return response.json()['choices'][0]['message']['content']
+
+def call_groq(prompt):
+    headers = {
+        "Authorization": f"Bearer {groq_key}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "model": "llama-3.3-70b-versatile", # 採用 Groq 目前最主力的高規格開源模型
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.2
+    }
+    response = requests.post("https://api.groq.com/openai/v1/chat/completions", json=data, headers=headers, timeout=30)
+    return response.json()['choices'][0]['message']['content']
+
+# 4. 聯軍大腦協同流程
+def solve_with_ai_alliance(question):
+    # ─── 階段 一：Gemini 2.5 Flash 撰寫初稿 ───
     prompt_stage1 = f"你現在是邏輯與程式能力極強的 AI 學習導師。請詳細解答以下問題，並在最後附帶標準 Python matplotlib 繪圖程式碼（包在 ```python ... ``` 區塊中，使用 plt.savefig('output_plot.png') 存檔）。\n\n【題目】：{question}"
-    response_stage1 = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_stage1)
+    response_stage1 = gemini_client.models.generate_content(model='gemini-2.5-flash', contents=prompt_stage1)
     draft_answer = response_stage1.text
     
-    prompt_stage2 = f"請仔細閱讀以下初稿解答與繪圖程式碼，挑出任何計算錯誤、邏輯漏洞或程式 Bug。若無請回覆無。\n\n【初稿】：{draft_answer}"
-    response_stage2 = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_stage2)
-    review_feedback = response_stage2.text
+    # ─── 階段 二：DeepSeek 強大邏輯進行深度審查 ───
+    prompt_stage2 = f"你現在是極度嚴苛的學術論文審查員。請仔細閱讀以下初稿解答與繪圖程式碼，挑出任何計算錯誤、邏輯漏洞、定義不嚴謹或程式 Bug。若無請回覆無。\n\n【初稿】：{draft_answer}"
+    review_feedback = call_deepseek(prompt_stage2)
     
+    # ─── 階段 三：Groq (Llama 3) 高速進行結晶整合 ───
     prompt_stage3 = f"請看過「初稿內容」與「審查意見」後，修正所有瑕疵，輸出最終的「完美版學習筆記」。必須包含清晰的觀念解析與修正後 100% 可執行的 matplotlib 繪圖程式碼（包在 ```python ... ``` 區塊中）。\n\n【初稿】：{draft_answer}\n【審查意見】：{review_feedback}"
-    response_stage3 = client.models.generate_content(model='gemini-2.5-flash', contents=prompt_stage3)
-    return response_stage3.text
+    final_combined = call_groq(prompt_stage3)
+    
+    return final_combined
 
-user_question = st.text_area("📝 請輸入你想研究或學習的題目：", placeholder="請輸入題目...")
+# 5. 前端使用者介面
+user_question = st.text_area("📝 請輸入你想研究或學習的題目：", placeholder="讓三巨頭聯軍幫你深度解題...")
 
-if st.button("🚀 開始解題", type="primary"):
+if st.button("🚀 啟動聯軍解題", type="primary"):
     if user_question.strip() == "":
         st.warning("請先輸入題目喔！")
     else:
-        with st.spinner("⏳ AI 智囊團正在深度解題、交叉審查並繪製圖形中..."):
+        with st.spinner("⏳ 🤖 Gemini 正在打底 ➔ 🧠 DeepSeek 正在嚴格挑錯 ➔ ⚡ Groq 正在高速終審..."):
             try:
-                final_output = solve_with_ai_team(user_question)
-                clean_text = re.sub(r'```python.*?```', '', final_output, flags=re.DOTALL)
+                # 執行聯軍運算
+                final_output = solve_with_ai_alliance(user_question)
                 
-                st.markdown("### 📚 智囊團終審解答")
+                # 濾掉程式碼，單獨渲染文字
+                clean_text = re.sub(r'```python.*?```', '', final_output, flags=re.DOTALL)
+                st.markdown("### 📚 聯軍終審完美解答")
                 st.markdown(clean_text.strip())
                 
+                # 抓取 Python 程式碼由本機執行畫圖
                 code_block = re.search(r'```python(.*?)```', final_output, re.DOTALL)
                 if code_block:
                     code = code_block.group(1).strip()
-                    plt.figure()
+                    plt.figure() # 重置畫布
                     exec(code, globals())
+                    
                     if os.path.exists('output_plot.png'):
                         st.markdown("### 📊 觀念視覺化圖形")
-                        st.image('output_plot.png', use_column_width=True)
+                        st.image('output_plot.png', use_container_width=True)
                         os.remove('output_plot.png')
             except Exception as e:
-                st.error(f"系統執行時发生錯誤：{e}")
+                st.error(f"聯軍運作時發生衝突錯誤：{e}")
