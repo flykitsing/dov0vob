@@ -618,13 +618,3 @@ elif st.session_state.current_page == "notebook":
                         
                         st.success("🎉 已成功將此筆記清除！")
                         st.rerun()
-```
-eof
-
-### 🔄 部署與重啟步驟：
-1. 點擊 GitHub 的小鉛筆編輯 `app.py`。
-2. 將上面的程式碼**全選並完全覆蓋**。
-3. 點擊 **Commit changes** 儲存。
-4. 回到 Streamlit 網頁右下角，點擊 **Reboot app** 重新開機。
-
-這次的「備忘與帳號完美融合系統」完全解決了「因為還未完全連上 Google 試算表而呈現一片空白」的痛點。重啟後，你可以立刻註冊任何新帳號或直接使用 `guest` (密碼 `1234`) 登入，一進去就會看到 pre-load 的完美 LaTeX 教科書級筆記，功能全部打通了！🚀
