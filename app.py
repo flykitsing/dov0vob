@@ -6,10 +6,11 @@ from google import genai
 import gspread
 import requests
 import pandas as pd
+import random
 
 # 1. 網頁初始化設定
 st.set_page_config(page_title="新式學習工具", layout="wide")
-st.title("🧠 新式學習工具 (Gemini x DeepSeek x Groq)")
+st.title("🧠 新式學習工具")
 
 # 2. 檢查並讀取所有 API 金鑰與設定
 gemini_key = os.environ.get("GEMINI_API_KEY")
@@ -39,7 +40,7 @@ def call_deepseek(prompt):
         response = requests.post("https://api.deepseek.com/v1/chat/completions", json=data, headers=headers, timeout=30)
         return response.json()['choices'][0]['message']['content']
     except Exception as e:
-        return f"【DeepSeek 審查中斷：{e}】"
+        return f"【核心審查中斷：{e}】"
 
 def call_groq(prompt):
     headers = {
@@ -55,7 +56,7 @@ def call_groq(prompt):
         response = requests.post("https://api.groq.com/openai/v1/chat/completions", json=data, headers=headers, timeout=30)
         return response.json()['choices'][0]['message']['content']
     except Exception as e:
-        return f"【Groq 終審中斷：{e}】"
+        return f"【終審中斷：{e}】"
 
 # 4. 側邊欄：Google 試算表筆記紀錄
 with st.sidebar:
@@ -100,13 +101,12 @@ with st.sidebar:
             if st.button("儲存到雲端"):
                 if new_tip.strip():
                     st.success(f"已儲存備忘：{new_tip.strip()}")
-                    st.caption("提示：請確保您的 Google 試算表已開啟「 know_link_edit 」權限。")
+                    st.caption("提示：請確保您的 Google 試算表已開啟編輯權限。")
                     
         except Exception as e:
             st.error(f"試算表連線狀態異常")
-            st.caption(f"提示: {e}")
 
-# 5. 聯軍大腦協同流程
+# 5. 解題核心邏輯
 def solve_with_ai_alliance(question):
     prompt_stage1 = f"你現在是邏輯與程式能力極強的 AI 學習導師。請詳細解答以下問題，並在最後附帶標準 Python matplotlib 繪圖程式碼（包在 ```python ... ``` 區塊中，使用 plt.savefig('output_plot.png') 存檔）。\n\n【題目】：{question}"
     response_stage1 = gemini_client.models.generate_content(model='gemini-2.5-flash', contents=prompt_stage1)
@@ -120,30 +120,97 @@ def solve_with_ai_alliance(question):
     
     return final_combined
 
-# 6. 主畫面輸入介面
-user_question = st.text_area("📝 請輸入你想研究或學習的題目：", placeholder="讓三巨頭聯軍幫你深度解題...")
+# ==========================================
+# 🎮 最初介面按鈕：切換「解題」與「小遊戲」
+# ==========================================
+tab1, tab2 = st.tabs(["🚀 解題模式", "🎮 小遊戲模式"])
 
-if st.button("🚀 啟動聯軍解題", type="primary"):
-    if user_question.strip() == "":
-        st.warning("請先輸入題目喔！")
-    else:
-        with st.spinner("⏳ 🤖 Gemini 正在打底 ➔ 🧠 DeepSeek 正在嚴格挑錯 ➔ ⚡ Groq 正在高速終審..."):
-            try:
-                final_output = solve_with_ai_alliance(user_question)
-                
-                clean_text = re.sub(r'```python.*?```', '', final_output, flags=re.DOTALL)
-                st.markdown("### 📚 聯軍終審完美解答")
-                st.markdown(clean_text.strip())
-                
-                code_block = re.search(r'```python(.*?)```', final_output, re.DOTALL)
-                if code_block:
-                    code = code_block.group(1).strip()
-                    plt.figure()
-                    exec(code, globals())
+# ─── 區塊一：解題模式 ───
+with tab1:
+    user_question = st.text_area("📝 請輸入你想研究或學習的題目：", placeholder="請輸入題目並啟動深度解題...", key="solve_input")
+
+    if st.button("🚀 啟動解題", type="primary"):
+        if user_question.strip() == "":
+            st.warning("請先輸入題目喔！")
+        else:
+            with st.spinner("⏳ 智囊團正在進行多階段交叉審查與視覺化繪圖中..."):
+                try:
+                    final_output = solve_with_ai_alliance(user_question)
                     
-                    if os.path.exists('output_plot.png'):
-                        st.markdown("### 📊 觀念視覺化圖形")
-                        st.image('output_plot.png', use_container_width=True)
-                        os.remove('output_plot.png')
-            except Exception as e:
-                st.error(f"聯軍運作時發生衝突錯誤：{e}")
+                    clean_text = re.sub(r'```python.*?```', '', final_output, flags=re.DOTALL)
+                    st.markdown("### 📚 終審完美解答")
+                    st.markdown(clean_text.strip())
+                    
+                    code_block = re.search(r'```python(.*?)```', final_output, re.DOTALL)
+                    if code_block:
+                        code = code_block.group(1).strip()
+                        plt.figure()
+                        exec(code, globals())
+                        
+                        if os.path.exists('output_plot.png'):
+                            st.markdown("### 📊 觀念視覺化圖形")
+                            st.image('output_plot.png', use_container_width=True)
+                            os.remove('output_plot.png')
+                except Exception as e:
+                    st.error(f"系統運作時發生衝突錯誤：{e}")
+
+# ─── 區塊二：小遊戲模式 ───
+with tab2:
+    st.subheader("⚡ 核心觀念快問快答")
+    st.write(f"目前遊戲出題庫與左側科目連動，當前科目：**{subject}**")
+    
+    # 簡單的靜態題庫系統
+    quiz_bank = {
+        "數學": [
+            {"q": "使用勘根定理時，函數在該閉區間內必須滿足什麼前提？", "a": "連續"},
+            {"q": "若多項式方程式有虛根，則虛根必定滿足什麼性質？", "a": "共軛成對"}
+        ],
+        "物理": [
+            {"q": "重力加速度在地球表面，緯度越高通常會越大還是越小？", "a": "越大"},
+            {"q": "光從空氣斜射入水中，其傳播速度會變快還是變慢？", "a": "變慢"}
+        ],
+        "地球科學": [
+            {"q": "聖嬰現象發生時，赤道東太平洋的海水表面溫度會異常升高還是降低？", "a": "升高"},
+            {"q": "大氣層中，氣溫隨高度增加而上升，且集中了大量臭氧的是哪一層？", "a": "平流層"}
+        ],
+        "資訊科學": [
+            {"q": "在 Python 中，想要在列表末尾添加一個元素，應該使用哪一個內建方法？", "a": "append"},
+            {"q": "時間複雜度為 O(n log n) 的常見排序演算法是哪一個？（例如：快排、合併）", "a": "快速排序"}
+        ],
+        "其他": [
+            {"q": "在排隊理論或生活中，常常開玩笑說「公車不來就不來，一來就來幾輛」？", "a": "三輛"}
+        ]
+    }
+    
+    # 確保 session state 初始化
+    if "current_q_idx" not in st.session_state:
+        st.session_state.current_q_idx = 0
+    if "score" not in st.session_state:
+        st.session_state.score = 0
+        
+    current_subject_quizzes = quiz_bank.get(subject, quiz_bank["其他"])
+    
+    # 防止切換科目時索引溢出
+    if st.session_state.current_q_idx >= len(current_subject_quizzes):
+        st.session_state.current_q_idx = 0
+        
+    q_data = current_subject_quizzes[st.session_state.current_q_idx]
+    
+    st.info(f"【題目】：{q_data['q']}")
+    
+    user_ans = st.text_input("請輸入你的答案（簡答）：", key=f"ans_{subject}_{st.session_state.current_q_idx}")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Submit 送出答案"):
+            if user_ans.strip() in q_data['a'] or q_data['a'] in user_ans.strip():
+                st.success("🎉 太強了！答案完全正確！")
+                st.session_state.score += 10
+            else:
+                st.error(f"❌ 差一點點！正確答案是：{q_data['a']}")
+    with col2:
+        if st.button("下一題 ➡️"):
+            st.session_state.current_q_idx = (st.session_state.current_q_idx + 1) % len(current_subject_quizzes)
+            st.rerun()
+            
+    st.metric(label="當前累積核心經驗值", value=f"{st.session_state.score} XP")
