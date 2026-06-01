@@ -13,12 +13,13 @@ import random
 # ==========================================
 st.set_page_config(page_title="新式學習工具", layout="wide")
 
-# 初始化 Session State 變數
+# 初始化 Session State 變數，用於管理歷史紀錄與遊戲狀態
 if "history_questions" not in st.session_state:
     st.session_state.history_questions = {
         "數學": ["勘根定理的幾何意義與連續性函數關係？"],
         "物理": ["光從空氣斜射入水中的折射率推導？"],
         "地球科學": ["大氣河流（Atmospheric Rivers）的水氣輸送機制？"],
+        "化學": ["氯化銀與鉻酸鉀沉澱時的顯色反應？"],
         "資訊科學": ["時間複雜度 O(n log n) 的排序演算法差異？"],
         "其他": []
     }
@@ -27,7 +28,7 @@ if "math_num" not in st.session_state: st.session_state.math_num = None
 if "game_score" not in st.session_state: st.session_state.game_score = 0
 if "review_score" not in st.session_state: st.session_state.review_score = 0
 
-# 置頂微型導覽列
+# 置頂微型導覽列 (約佔畫面的 1/24 高度)
 current_mode = st.radio(
     "選擇模式",
     ["🚀 智慧解題", "📝 歷史複習 (動態出題)", "🎮 學術小遊戲 (沉澱/質數)"],
@@ -55,52 +56,99 @@ def call_deepseek(prompt):
     headers = {"Authorization": f"Bearer {deepseek_key}", "Content-Type": "application/json"}
     data = {"model": "deepseek-chat", "messages": [{"role": "user", "content": prompt}], "temperature": 0.2}
     try:
-        response = requests.post("[https://api.deepseek.com/v1/chat/completions](https://api.deepseek.com/v1/chat/completions)", json=data, headers=headers, timeout=30)
+        response = requests.post("https://api.deepseek.com/v1/chat/completions", json=data, headers=headers, timeout=30)
         return response.json()['choices'][0]['message']['content']
-    except: return "【核心審查中斷】"
+    except: 
+        return "【核心審查中斷】"
 
 def call_groq(prompt):
     headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
     data = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": prompt}], "temperature": 0.2}
     try:
-        response = requests.post("[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)", json=data, headers=headers, timeout=30)
+        response = requests.post("https://api.groq.com/openai/v1/chat/completions", json=data, headers=headers, timeout=30)
         return response.json()['choices'][0]['message']['content']
-    except: return "【終審中斷】"
+    except: 
+        return "【終審中斷】"
 
 # ==========================================
-# 3. 側邊欄：Google 試算表筆記紀錄
+# 3. 🎯 核心優化：Google 試算表筆記本功能 (雙向讀寫 + 自動建表防錯)
 # ==========================================
+worksheet_object = None  # 用於在主程式與側邊欄共用的試算表物件
+notes_list = []          # 當前科目的備忘錄清單
+
 with st.sidebar:
     st.header("🧠 新式學習工具")
-    st.caption("雲端核心技巧與提醒同步")
+    st.caption("雲端筆記本與提醒同步")
     subject = st.selectbox("當前專注科目", ["數學", "物理", "地球科學", "化學", "資訊科學", "其他"])
     
-    if spreadsheet_url:
+    if not spreadsheet_url:
+        st.warning("⚠️ 請先在 Streamlit Secrets 中設定 SPREADSHEET_URL。")
+    else:
         try:
+            # 建立與 Google 試算表的連線 (匿名/公開編輯權限模式)
             if "gspread_client" not in st.session_state:
-                st.session_state.gspread_client = gspread.public()
-            gc = st.session_state.gspread_client
-            if gc:
-                sh = gc.open_by_url(spreadsheet_url)
                 try:
-                    worksheet = sh.worksheet(subject)
-                    notes_list = worksheet.col_values(1)
-                except:
-                    worksheet = None
-                    notes_list = []
+                    st.session_state.gspread_client = gspread.public()
+                except Exception:
+                    st.session_state.gspread_client = None
+            
+            gc = st.session_state.gspread_client
+            
+            if gc:
+                # 打開試算表
+                sh = gc.open_by_url(spreadsheet_url)
                 
+                # 嘗試讀取當前科目的工作表 (Worksheet)
+                try:
+                    worksheet_object = sh.worksheet(subject)
+                    # 讀取第一欄的所有內容 (第 1 列通常是標題「技巧紀錄」)
+                    all_values = worksheet_object.col_values(1)
+                    notes_list = all_values[1:] if len(all_values) > 1 else []
+                except gspread.exceptions.WorksheetNotFound:
+                    # 💡 防呆機制：如果找不到該科目的工作表，就自動幫使用者創建一個！
+                    st.info(f"📊 偵測到雲端無「{subject}」工作表，正在自動為您建立分頁...")
+                    worksheet_object = sh.add_worksheet(title=subject, rows=100, cols=3)
+                    # 寫入第一行首列作為標題欄
+                    worksheet_object.update_cell(1, 1, "技巧紀錄")
+                    notes_list = []
+                except Exception as worksheet_err:
+                    st.error("工作表讀取發生異常")
+                    st.caption(f"錯誤細節: {worksheet_err}")
+                
+                # 呈現雲端備忘錄內容
                 st.markdown(f"### 📌 {subject} 雲端備忘錄")
                 if notes_list:
-                    for note in notes_list: st.info(f"• {note}")
-                else: 
-                    st.caption("目前此科目還沒有雲端紀錄喔。")
+                    # 移除空白行並呈現
+                    for note in notes_list:
+                        if note.strip():
+                            st.info(f"• {note}")
+                else:
+                    st.caption("目前此科目雲端上還沒有紀錄喔。在下方輸入框寫點東西並存入吧！")
                 
                 st.divider()
-                new_tip = st.text_area("快捷新增備忘：", key="sidebar_tip", placeholder="寫下此科目的重要技巧...")
+                
+                # 新增技巧備忘至雲端
+                new_tip = st.text_area("快捷新增備忘：", key="sidebar_tip", placeholder="例如：寫下重要考點或解題大招...")
+                
                 if st.button("儲存到 Google 試算表"):
-                    if new_tip.strip(): st.success("已成功儲存至雲端！")
-        except:
-            st.caption("🔗 雲端連線模組就緒")
+                    if new_tip.strip() == "":
+                        st.warning("請先輸入備忘內容！")
+                    elif worksheet_object is not None:
+                        with st.spinner("⏳ 正在將筆記同步寫入雲端..."):
+                            try:
+                                # 真正將資料寫入 Google Sheets 的最後一行 (Append Row)
+                                worksheet_object.append_row([new_tip.strip()])
+                                st.success("🎉 已成功儲存至 Google 試算表！")
+                                # 自動重新整理，即時顯示最新儲存的筆記
+                                st.rerun()
+                            except Exception as write_err:
+                                st.error("儲存失敗，請確認您的 Google 試算表右上角是否已開啟「知道連結的人均可編輯」權限。")
+                                st.caption(f"錯誤細節: {write_err}")
+            else:
+                st.caption("🔗 雲端連線模組初始化中...")
+        except Exception as conn_err:
+            st.error("試算表連線狀態異常")
+            st.caption(f"請確保 Secrets 的 SPREADSHEET_URL 為完整的試算表網址。錯誤訊息: {conn_err}")
 
 # ==========================================
 # 4. 解題核心邏輯
@@ -115,7 +163,7 @@ def solve_with_ai_alliance(question):
     return call_groq(p3)
 
 # ==========================================
-# 核心功能路由分流
+# 5. 核心功能路由分流
 # ==========================================
 
 # ─── 模式一：智慧解題 ───
