@@ -7,7 +7,7 @@ import gspread
 import requests
 import pandas as pd
 
-# 1. 網頁初始化設定 (已更新為：新式學習工具)
+# 1. 網頁初始化設定
 st.set_page_config(page_title="新式學習工具", layout="wide")
 st.title("🧠 新式學習工具 (Gemini x DeepSeek x Groq)")
 
@@ -100,4 +100,50 @@ with st.sidebar:
             if st.button("儲存到雲端"):
                 if new_tip.strip():
                     st.success(f"已儲存備忘：{new_tip.strip()}")
-                    st.caption("提示：請確保
+                    st.caption("提示：請確保您的 Google 試算表已開啟「 know_link_edit 」權限。")
+                    
+        except Exception as e:
+            st.error(f"試算表連線狀態異常")
+            st.caption(f"提示: {e}")
+
+# 5. 聯軍大腦協同流程
+def solve_with_ai_alliance(question):
+    prompt_stage1 = f"你現在是邏輯與程式能力極強的 AI 學習導師。請詳細解答以下問題，並在最後附帶標準 Python matplotlib 繪圖程式碼（包在 ```python ... ``` 區塊中，使用 plt.savefig('output_plot.png') 存檔）。\n\n【題目】：{question}"
+    response_stage1 = gemini_client.models.generate_content(model='gemini-2.5-flash', contents=prompt_stage1)
+    draft_answer = response_stage1.text
+    
+    prompt_stage2 = f"你現在是極度嚴苛的學術論文審查員。請仔細閱讀以下初稿解答與繪圖程式碼，挑出任何計算錯誤、邏輯漏洞、定義不嚴謹或程式 Bug。若無請回覆無。\n\n【初稿】：{draft_answer}"
+    review_feedback = call_deepseek(prompt_stage2)
+    
+    prompt_stage3 = f"請看過「初稿內容」與「審查意見」後，修正所有瑕疵，輸出最終的「完美版學習筆記」。必須包含清晰的觀念解析與修正後 100% 可執行的 matplotlib 繪圖程式碼（包在 ```python ... ``` 區塊中）。\n\n【初稿】：{draft_answer}\n【審查意見】：{review_feedback}"
+    final_combined = call_groq(prompt_stage3)
+    
+    return final_combined
+
+# 6. 主畫面輸入介面
+user_question = st.text_area("📝 請輸入你想研究或學習的題目：", placeholder="讓三巨頭聯軍幫你深度解題...")
+
+if st.button("🚀 啟動聯軍解題", type="primary"):
+    if user_question.strip() == "":
+        st.warning("請先輸入題目喔！")
+    else:
+        with st.spinner("⏳ 🤖 Gemini 正在打底 ➔ 🧠 DeepSeek 正在嚴格挑錯 ➔ ⚡ Groq 正在高速終審..."):
+            try:
+                final_output = solve_with_ai_alliance(user_question)
+                
+                clean_text = re.sub(r'```python.*?```', '', final_output, flags=re.DOTALL)
+                st.markdown("### 📚 聯軍終審完美解答")
+                st.markdown(clean_text.strip())
+                
+                code_block = re.search(r'```python(.*?)```', final_output, re.DOTALL)
+                if code_block:
+                    code = code_block.group(1).strip()
+                    plt.figure()
+                    exec(code, globals())
+                    
+                    if os.path.exists('output_plot.png'):
+                        st.markdown("### 📊 觀念視覺化圖形")
+                        st.image('output_plot.png', use_container_width=True)
+                        os.remove('output_plot.png')
+            except Exception as e:
+                st.error(f"聯軍運作時發生衝突錯誤：{e}")
