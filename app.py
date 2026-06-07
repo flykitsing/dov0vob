@@ -1,99 +1,65 @@
 import streamlit as st
+import os, requests, random
 
-# ==========================================
-# 0. 核心全域工具函式 (延遲載入套件，防止白屏)
-# ==========================================
-def go_to_menu():
-    st.session_state.current_page = "menu"
+# 1. 核心工具與 AI 路由
+def go_to_menu(): st.session_state.current_page = "menu"
 
-def safe_plot(code):
+def call_ai(p):
+    k = os.environ.get("GEMINI_API_KEY")
+    if not k: return "【未設定 GEMINI_API_KEY】"
     try:
-        import os
-        import matplotlib
-        matplotlib.use('Agg')
-        import matplotlib.pyplot as plt
-        plt.figure()
-        exec(code, globals())
-        if os.path.exists('output_plot.png'):
-            st.image('output_plot.png', use_container_width=True)
-            os.remove('output_plot.png')
-    except Exception as e:
-        st.error(f"繪圖引擎異常：{e}")
-
-def call_gemini_backup(prompt_text):
-    try:
-        import os
         from google import genai
-        k = os.environ.get("GEMINI_API_KEY")
-        client = genai.Client(api_key=k)
-        res = client.models.generate_content(model="gemini-2.5-flash", contents=prompt_text)
-        return res.text
-    except:
-        return "【模型運作失敗】"
+        return genai.Client(api_key=k).models.generate_content(model="gemini-2.5-flash", contents=p).text
+    except Exception as e: return f"運作失敗: {e}"
 
-def call_deepseek(prompt):
-    try:
-        import os
-        import requests
-        k = os.environ.get("DEEPSEEK_API_KEY")
-        if not k:
-            return call_gemini_backup(prompt)
-        u = "https://api.deepseek.com/v1/chat/completions"
-        hd = {"Authorization": f"Bearer {k}", "Content-Type": "application/json"}
-        payload = {"model": "deepseek-chat", "messages": [{"role": "user", "content": prompt}], "temperature": 0.2}
-        return requests.post(url=u, json=payload, headers=hd, timeout=10).json()['choices'][0]['message']['content']
-    except:
-        return call_gemini_backup(prompt)
-
-def call_groq(prompt):
-    try:
-        import os
-        import requests
-        k = os.environ.get("GROQ_API_KEY")
-        if not k:
-            return call_gemini_backup(prompt)
-        u = "https://api.groq.com/openai/v1/chat/completions"
-        hd = {"Authorization": f"Bearer {k}", "Content-Type": "application/json"}
-        payload = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": prompt}], "temperature": 0.2}
-        return requests.post(url=u, json=payload, headers=hd, timeout=10).json()['choices'][0]['message']['content']
-    except:
-        return call_gemini_backup(prompt)
-
-def run_ai_pipeline(q):
-    p1 = f"請解答問題。必須附帶 Python 繪圖程式碼並包在 ```python ... ``` 區塊中，使用 plt.savefig('output_plot.png') 存檔。\n\n題目：{q}"
-    draft = call_gemini_backup(p1)
-    review = call_deepseek(f"請指出此解答的錯誤：\n\n{draft}")
-    final = call_groq(f"請整合修正，輸出終審完美版筆記，必須包含繪圖程式碼區塊。\n\n初稿：{draft}\n建議：{review}")
-    return final
-
-def clean_and_display(txt):
-    if "```python" in txt:
-        parts = txt.split("```python")
-        before_code = parts[0]
-        after_code = parts[1].split("```")
-        code_body = after_code[0]
-        remaining_text = after_code[1] if len(after_code) > 1 else ""
-        st.markdown(before_code + remaining_text)
-        st.markdown("### 📊 觀念視覺化圖形")
-        safe_plot(code_body.strip())
-    else:
-        st.markdown(txt)
-
-# ==========================================
-# 1. 網頁初始化與狀態管理
-# ==========================================
+# 2. 初始化狀態
 st.set_page_config(page_title="新式學習工具", layout="wide")
+for k, v in {"current_page": "menu", "notes": [], "chem_q": None, "math_q": None}.items():
+    if k not in st.session_state: st.session_state[k] = v
 
-if "current_page" not in st.session_state or st.session_state.current_page is None:
-    st.session_state.current_page = "menu"
+# 3. 側邊欄
+with st.sidebar:
+    st.header("🧠 學習工具")
+    sub = st.selectbox("科目", ["數學", "物理", "地科", "化學", "其他"])
+    for n in [x for x in st.session_state.notes if x["sub"] == sub][-2:]:
+        st.info(f"• {n['con']}")
+    note_txt = st.text_area("新增筆記")
+    if st.button("儲存筆記") and note_txt.strip():
+        st.session_state.notes.append({"sub": sub, "con": note_txt.strip()})
+        st.rerun()
 
-if "local_notes" not in st.session_state:
-    st.session_state.local_notes = [
-        {"subject": "數學", "content": "勘根定理的前提：函數 f(x) 必須在閉區間 [a, b] 內連續。", "time": "2026-06-01"},
-        {"subject": "物理", "content": "折射定律：由司乃耳定律 n1 * sin(theta1) = n2 * sin(theta2) 得知。", "time": "2026-06-02"},
-        {"subject": "地球科學", "content": "大氣河流是大氣中極端水氣輸送的狹窄通道。", "time": "2026-06-03"}
-    ]
+# 4. 主網頁功能路由 (控制在極短行數內，防止 GitHub 截斷)
+if st.session_state.current_page == "menu":
+    st.title("🧠 新式學習工具")
+    cols = st.columns(4)
+    pages = [("🚀 智慧解題", "solve"), ("📝 歷史複習", "review"), ("🎮 遊戲場", "game"), ("📒 記事本", "notebook")]
+    for i, (title, p_name) in enumerate(pages):
+        with cols[i]:
+            if st.button(title, use_container_width=True, type="primary"):
+                st.session_state.current_page = p_name
+                st.rerun()
 
-if "history_questions" not in st.session_state:
-    st.session_state.history_questions = {
-        "數學": ["勘根定理的幾何意義與連續性函數關係？"], "物理":
+elif st.session_state.current_page == "solve":
+    st.button("⬅️ 回主畫面", on_click=go_to_menu)
+    st.subheader("🚀 智慧解題系統")
+    q = st.text_area("請輸入想研究的題目：")
+    if st.button("啟動解題", type="primary") and q.strip():
+        with st.spinner("思考中..."):
+            st.markdown(call_ai(f"請詳細解答此考點並給出核心觀念：{q}"))
+
+elif st.session_state.current_page == "review":
+    st.button("⬅️ 回主畫面", on_click=go_to_menu)
+    st.subheader("📝 動態觀念複習")
+    st.info(f"當前科目：{sub}")
+    q_input = st.text_area("輸入你想複習的觀念：")
+    if st.button("讓 AI 進行觀念抽查") and q_input.strip():
+        with st.spinner("評估中..."):
+            st.write(call_ai(f"請針對「{q_input}」這個觀念，出一個簡單的觀念問答題並給出詳解。"))
+
+elif st.session_state.current_page == "game":
+    st.button("⬅️ 回主畫面", on_click=go_to_menu)
+    st.subheader("🎮 學術終結者競技場")
+    g_type = st.selectbox("選擇遊戲", ["化學沉澱", "數學分解"])
+    if g_type == "化學沉澱":
+        if st.button("換一題") or st.session_state.chem_q is None:
+            st.session_state.chem_q = random.choice(
