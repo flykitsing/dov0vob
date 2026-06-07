@@ -5,7 +5,7 @@ import random
 from datetime import datetime
 
 # ==========================================
-# 0. 核心全域工具函式 (完全頂格、無深層縮進)
+# 0. 核心全域工具函式
 # ==========================================
 def go_to_menu():
     st.session_state.current_page = "menu"
@@ -78,7 +78,7 @@ def clean_and_display(txt):
         st.markdown(txt)
 
 # ==========================================
-# 1. 網頁初始化與 狀態管理
+# 1. 網頁初始化與狀態管理 (完全移除 LaTeX 符號)
 # ==========================================
 st.set_page_config(page_title="新式學習工具", layout="wide")
 
@@ -87,5 +87,20 @@ if "current_page" not in st.session_state or st.session_state.current_page is No
 
 if "local_notes" not in st.session_state:
     st.session_state.local_notes = [
-        {"subject": "數學", "content": "勘根定理的前提：函數 $f(x)$ 必須在閉區間 $[a, b]$ 內連續。", "time": "2026-06-01"},
-        {"subject": "物理", "content": "折射定律：由司乃耳定律 $n
+        {"subject": "數學", "content": "勘根定理的前提：函數 f(x) 必須在閉區間 [a, b] 內連續。", "time": "2026-06-01"},
+        {"subject": "物理", "content": "折射定律：由司乃耳定律 n1 * sin(theta1) = n2 * sin(theta2) 得知。", "time": "2026-06-02"},
+        {"subject": "地球科學", "content": "大氣河流是大氣中極端水氣輸送的狹窄通道。", "time": "2026-06-03"}
+    ]
+
+if "history_questions" not in st.session_state:
+    st.session_state.history_questions = {
+        "數學": ["勘根定理的幾何意義與連續性函數關係？"], "物理": ["光從空氣斜射入水中的折射率推導？"],
+        "地球科學": ["大氣河流的水氣輸送機制？"], "化學": [], "資訊科學": [], "其他": []
+    }
+
+if "chem_q" not in st.session_state: st.session_state.chem_q = None
+if "math_num" not in st.session_state: st.session_state.math_num = None
+
+# ==========================================
+# 2. 側邊欄面板
+# ==========================================
