@@ -5,7 +5,7 @@ import requests
 import random
 from datetime import datetime
 
-# 將 matplotlib 延後到需要繪圖時才匯入，防止網頁初始化直接崩潰
+# 將 matplotlib 延後到需要繪圖時才匯入
 def safe_plot(code):
     try:
         import matplotlib
@@ -20,7 +20,7 @@ def safe_plot(code):
         st.error(f"繪圖引擎異常：{e}")
 
 # ==========================================
-# 0. 核心路由回呼函式 (解決按鈕不執行地雷)
+# 0. 核心路由回呼函式
 # ==========================================
 def go_to_menu():
     st.session_state.current_page = "menu"
@@ -33,12 +33,11 @@ st.set_page_config(page_title="新式學習工具", layout="wide")
 if "current_page" not in st.session_state or st.session_state.current_page is None:
     st.session_state.current_page = "menu"
 
-# 純本地記憶體快取
 if "local_notes" not in st.session_state:
     st.session_state.local_notes = [
-        {"subject": "數學", "content": "勘根定理的前提：函數 $f(x)$ 必須在閉區間 $[a, b]$ 內連續，且 $f(a) \\cdot f(b) < 0$。", "time": "2026-06-01 10:30"},
-        {"subject": "物理", "content": "折射定律：由司乃耳定律 $n_1 \\sin\\theta_1 = n_2 \\sin\\theta_2$。", "time": "2026-06-02 14:15"},
-        {"subject": "地球科學", "content": "大氣河流是大氣中極端水氣輸送的狹窄通道。", "time": "2026-06-03 09:00"}
+        {"subject": "數學", "content": "勘根定理的前提：函數 $f(x)$ 必須在閉區間 $[a, b]$ 內連續。", "time": "2026-06-01"},
+        {"subject": "物理", "content": "折射定律：由司乃耳定律 $n_1 \\sin\\theta_1 = n_2 \\sin\\theta_2$。", "time": "2026-06-02"},
+        {"subject": "地球科學", "content": "大氣河流是大氣中極端水氣輸送的狹窄通道。", "time": "2026-06-03"}
     ]
 
 if "history_questions" not in st.session_state:
@@ -79,20 +78,4 @@ def call_deepseek(prompt):
     if not deepseek_key:
         return call_gemini_backup(f"評估：\n\n{prompt}")
     try:
-        api_url = "https://api.deepseek.com/v1/chat/completions"
-        hd = {"Authorization": f"Bearer {deepseek_key}", "Content-Type": "application/json"}
-        payload = {
-            "model": "deepseek-chat", 
-            "messages": [{"role": "user", "content": prompt}], 
-            "temperature": 0.2
-        }
-        response = requests.post(url=api_url, json=payload, headers=hd, timeout=10)
-        return response.json()['choices'][0]['message']['content']
-    except:
-        return call_gemini_backup(prompt)
-
-def call_groq(prompt):
-    if not groq_key:
-        return call_gemini_backup(prompt)
-    try:
-        api_url = "https
+        # 用超短字串拼接，對抗任何網
