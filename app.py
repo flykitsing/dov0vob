@@ -1,17 +1,14 @@
 import streamlit as st
-import os
-import requests
-import random
-from datetime import datetime
 
 # ==========================================
-# 0. 核心全域工具函式
+# 0. 核心全域工具函式 (延遲載入套件，防止白屏)
 # ==========================================
 def go_to_menu():
     st.session_state.current_page = "menu"
 
 def safe_plot(code):
     try:
+        import os
         import matplotlib
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
@@ -25,6 +22,7 @@ def safe_plot(code):
 
 def call_gemini_backup(prompt_text):
     try:
+        import os
         from google import genai
         k = os.environ.get("GEMINI_API_KEY")
         client = genai.Client(api_key=k)
@@ -34,10 +32,12 @@ def call_gemini_backup(prompt_text):
         return "【模型運作失敗】"
 
 def call_deepseek(prompt):
-    k = os.environ.get("DEEPSEEK_API_KEY")
-    if not k:
-        return call_gemini_backup(prompt)
     try:
+        import os
+        import requests
+        k = os.environ.get("DEEPSEEK_API_KEY")
+        if not k:
+            return call_gemini_backup(prompt)
         u = "https://api.deepseek.com/v1/chat/completions"
         hd = {"Authorization": f"Bearer {k}", "Content-Type": "application/json"}
         payload = {"model": "deepseek-chat", "messages": [{"role": "user", "content": prompt}], "temperature": 0.2}
@@ -46,10 +46,12 @@ def call_deepseek(prompt):
         return call_gemini_backup(prompt)
 
 def call_groq(prompt):
-    k = os.environ.get("GROQ_API_KEY")
-    if not k:
-        return call_gemini_backup(prompt)
     try:
+        import os
+        import requests
+        k = os.environ.get("GROQ_API_KEY")
+        if not k:
+            return call_gemini_backup(prompt)
         u = "https://api.groq.com/openai/v1/chat/completions"
         hd = {"Authorization": f"Bearer {k}", "Content-Type": "application/json"}
         payload = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": prompt}], "temperature": 0.2}
@@ -78,7 +80,7 @@ def clean_and_display(txt):
         st.markdown(txt)
 
 # ==========================================
-# 1. 網頁初始化與狀態管理 (完全移除 LaTeX 符號)
+# 1. 網頁初始化與狀態管理
 # ==========================================
 st.set_page_config(page_title="新式學習工具", layout="wide")
 
@@ -94,13 +96,4 @@ if "local_notes" not in st.session_state:
 
 if "history_questions" not in st.session_state:
     st.session_state.history_questions = {
-        "數學": ["勘根定理的幾何意義與連續性函數關係？"], "物理": ["光從空氣斜射入水中的折射率推導？"],
-        "地球科學": ["大氣河流的水氣輸送機制？"], "化學": [], "資訊科學": [], "其他": []
-    }
-
-if "chem_q" not in st.session_state: st.session_state.chem_q = None
-if "math_num" not in st.session_state: st.session_state.math_num = None
-
-# ==========================================
-# 2. 側邊欄面板
-# ==========================================
+        "數學": ["勘根定理的幾何意義與連續性函數關係？"], "物理":
