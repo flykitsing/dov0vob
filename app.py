@@ -73,9 +73,15 @@ def call_deepseek(prompt):
     if not deepseek_key:
         return call_gemini_backup(f"評估：\n\n{prompt}")
     try:
-        headers = {"Authorization": f"Bearer {deepseek_key}", "Content-Type": "application/json"}
-        data = {"model": "deepseek-chat", "messages": [{"role": "user", "content": prompt}], "temperature": 0.2}
-        response = requests.post("https://api.deepseek.com/v1/chat/completions", json=data, headers=headers, timeout=10)
+        # 極致拆解長行，防範任何網頁複製截斷
+        api_url = "https://api.deepseek.com/v1/chat/completions"
+        hd = {"Authorization": f"Bearer {deepseek_key}", "Content-Type": "application/json"}
+        payload = {
+            "model": "deepseek-chat", 
+            "messages": [{"role": "user", "content": prompt}], 
+            "temperature": 0.2
+        }
+        response = requests.post(url=api_url, json=payload, headers=hd, timeout=10)
         return response.json()['choices'][0]['message']['content']
     except:
         return call_gemini_backup(prompt)
@@ -84,6 +90,65 @@ def call_groq(prompt):
     if not groq_key:
         return call_gemini_backup(prompt)
     try:
-        headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
-        data = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": prompt}], "temperature": 0.2}
-        response = requests.post("
+        # 極致拆解長行，防範任何網頁複製截斷
+        api_url = "https://api.groq.com/openai/v1/chat/completions"
+        hd = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
+        payload = {
+            "model": "llama-3.3-70b-versatile", 
+            "messages": [{"role": "user", "content": prompt}], 
+            "temperature": 0.2
+        }
+        response = requests.post(url=api_url, json=payload, headers=hd, timeout=10)
+        return response.json()['choices'][0]['message']['content']
+    except:
+        return call_gemini_backup(prompt)
+
+# ==========================================
+# 3. 雲端資料庫安全存取
+# ==========================================
+cloud_active = False
+notes_sheet_object = None
+
+if spreadsheet_url:
+    try:
+        import gspread
+        if "gspread_client" not in st.session_state or st.session_state.gspread_client is None:
+            st.session_state.gspread_client = gspread.public()
+        if st.session_state.gspread_client:
+            sh = st.session_state.gspread_client.open_by_url(spreadsheet_url)
+            cloud_active = True
+    except:
+        cloud_active = False
+
+# ==========================================
+# 4. 側邊欄：個人備忘錄
+# ==========================================
+with st.sidebar:
+    st.header("🧠 新式學習工具")
+    subject = st.selectbox("當前專注科目", ["數學", "物理", "地球科學", "化學", "資訊科學", "其他"])
+    notes_in_subject = []
+    
+    if cloud_active and spreadsheet_url:
+        try:
+            sh = st.session_state.gspread_client.open_by_url(spreadsheet_url)
+            try:
+                notes_sheet_object = sh.worksheet(subject)
+            except:
+                notes_sheet_object = sh.add_worksheet(title=subject, rows=500, cols=2)
+                notes_sheet_object.update_cell(1, 1, "備忘內容")
+                notes_sheet_object.update_cell(1, 2, "建立時間")
+            all_rows = notes_sheet_object.get_all_values()
+            if len(all_rows) > 1:
+                notes_in_subject = [{"row_idx": idx + 2, "content": r[0], "time": r[1]} for idx, r in enumerate(all_rows[1:]) if r[0].strip() != ""]
+        except:
+            pass
+            
+    if not notes_in_subject:
+        notes_in_subject = [{"row_idx": idx, "content": n["content"], "time": n["time"]} for idx, n in enumerate(st.session_state.local_notes) if n["subject"] == subject]
+        
+    st.markdown(f"### 📌 {subject} 備忘錄")
+    for item in notes_in_subject[-3:]:
+        st.info(f"• {item['content']}")
+        
+    st.divider()
+    new
