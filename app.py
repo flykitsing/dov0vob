@@ -5,7 +5,6 @@ import requests
 import random
 from datetime import datetime
 
-# 將 matplotlib 延後到需要繪圖時才匯入，防止網頁初始化直接崩潰
 def safe_plot(code):
     try:
         import matplotlib
@@ -73,7 +72,6 @@ def call_deepseek(prompt):
     if not deepseek_key:
         return call_gemini_backup(f"評估：\n\n{prompt}")
     try:
-        # 極致拆解長行，防範任何網頁複製截斷
         api_url = "https://api.deepseek.com/v1/chat/completions"
         hd = {"Authorization": f"Bearer {deepseek_key}", "Content-Type": "application/json"}
         payload = {
@@ -90,7 +88,6 @@ def call_groq(prompt):
     if not groq_key:
         return call_gemini_backup(prompt)
     try:
-        # 極致拆解長行，防範任何網頁複製截斷
         api_url = "https://api.groq.com/openai/v1/chat/completions"
         hd = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
         payload = {
@@ -151,4 +148,23 @@ with st.sidebar:
         st.info(f"• {item['content']}")
         
     st.divider()
-    new
+    
+    # 這裡就是剛才被截斷的災情發生處！這次徹底拆解成極短行，確保絕對不卡死
+    txt_holder = "請在此輸入..."
+    user_note = st.text_area(label="快速新增筆記：", key="sb_note", placeholder=txt_holder, height=80)
+    
+    if st.button("儲存筆記"):
+        if user_note.strip() != "":
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+            st.session_state.local_notes.append({"subject": subject, "content": user_note.strip(), "time": now_str})
+            if cloud_active and notes_sheet_object is not None:
+                try: 
+                    notes_sheet_object.append_row([user_note.strip(), now_str])
+                except: 
+                    pass
+            st.success("🎉 儲存成功！")
+            st.rerun()
+
+# ==========================================
+# 5. 主網頁功能路由
+#
