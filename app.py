@@ -21,12 +21,12 @@ st.set_page_config(page_title="新式學習工具", layout="wide")
 if "current_page" not in st.session_state:
     st.session_state.current_page = "menu"
 
-# 初始化本地快取筆記本 (保證初次打開絕對有豐富內容，不會呈現空白！)
+# 初始化本地快取筆記本
 if "local_notes" not in st.session_state:
     st.session_state.local_notes = [
         {
             "subject": "數學", 
-            "content": "勘根定理的前提：函數 $f(x)$ 必須在閉區間 $[a, b]$ 內連續，且 $f(a) \\cdot f(b) < 0$。若函數不連續（例如有分式斷點），則定理不一定成立！", 
+            "content": "勘根定理的前提：函數 $f(x)$ 必須在閉區間 $[a, b]$ 內連續，且 $f(a) \\cdot f(b) < 0$。若函數不連續，則定理不一定成立！", 
             "time": "2026-06-01 10:30"
         },
         {
@@ -41,17 +41,17 @@ if "local_notes" not in st.session_state:
         },
         {
             "subject": "化學", 
-            "content": "鉻酸鉀（$K_2CrO_4$）與銀離子（$Ag^+$）反應會生成磚紅色的鉻酸銀（$Ag_2CrO_4$）沉澱。此反應常用於莫耳法（Mohr method）滴定水中氯離子的終點指示。", 
+            "content": "鉻酸鉀（$K_2CrO_4$）與銀離子（$Ag^+$）反應會生成磚紅色的鉻酸銀（$Ag_2CrO_4$）沉澱。此反應常用於莫耳法滴定水中氯離子的終點指示。", 
             "time": "2026-06-04 16:45"
         },
         {
             "subject": "資訊科學", 
-            "content": "快速排序（Quick Sort）與合併排序（Merge Sort）的平均時間複雜度均為 $O(n \\log n)$。然而快速排序在最差情況下會退化至 $O(n^2)$，且合併排序需要額外 $O(n)$ 的輔助空間。", 
+            "content": "快速排序與合併排序的平均時間複雜度均為 $O(n \\log n)$。然而快速排序在最差情況下會退化至 $O(n^2)$，且合併排序需要額外 $O(n)$ 的輔助空間。", 
             "time": "2026-06-05 11:20"
         }
     ]
 
-# 歷史解題紀錄庫（與科目連動，供歷史複習出題）
+# 歷史解題紀錄庫
 if "history_questions" not in st.session_state:
     st.session_state.history_questions = {
         "數學": ["勘根定理的幾何意義與連續性函數關係？"],
@@ -71,20 +71,4 @@ if "review_score" not in st.session_state: st.session_state.review_score = 0
 # 2. 檢查並讀取 API 金鑰與雲端設定
 # ==========================================
 gemini_key = os.environ.get("GEMINI_API_KEY")
-deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
-groq_key = os.environ.get("GROQ_API_KEY")
-spreadsheet_url = os.environ.get("SPREADSHEET_URL")
-
-# 檢查最基礎的 Gemini API Key，若完全無 Key 則報錯
-if not gemini_key:
-    st.error("🔑 偵測不到關鍵的 GEMINI_API_KEY！請在 Streamlit 後台 Secrets 設定金鑰。")
-    st.stop()
-
-gemini_client = genai.Client(api_key=gemini_key)
-
-# 具備防斷線與自動降級機制的 API 呼叫函式
-def call_deepseek(prompt):
-    if not deepseek_key:
-        try:
-            response = gemini_client.models.generate_content(
-                model='
+deepseek_key = os
